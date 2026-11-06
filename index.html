@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Kartenkontrolle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script>
+/* ===== KONFIGURATION: hier die Werte aus Supabase eintragen (Project Settings -> API) ===== */
+const SUPABASE_URL = "https://molcthlgctioupivpjqm.supabase.co";
+const SUPABASE_KEY = "sb_publishable_H_Qxl7RmUdnOJzyzd3DtVg_zZqRLUBY";
+/* Der Schlüssel ist öffentlich und darf im Code stehen. Den "secret"/"service_role"-Schlüssel NIE hier eintragen. */
+</script>
+<style>
+:root{
+  --bg:#f3f4f1; --surface:#ffffff; --ink:#1b1f1d; --muted:#5d6661; --line:#d9ddd8;
+  --accent:#1d5b8f; --accent-ink:#ffffff; --ok:#11823b; --bad:#c42121; --warn:#b86a00; --soft:#e9ece8;
+  --f-display:"IBM Plex Sans Condensed","Arial Narrow",Arial,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#121514; --surface:#1b1f1d; --ink:#e8ebe8; --muted:#9aa39e; --line:#2e3431;
+  --accent:#5b9fd6; --accent-ink:#0b1620; --ok:#2fa95a; --bad:#e04545; --warn:#e0912a; --soft:#232826; color-scheme:dark}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{background:var(--bg);color:var(--ink);margin:0}
+body{font-family:var(--f-body);font-size:15px;line-height:1.45;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.wrap{max-width:760px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px 40px;display:flex;flex-direction:column;gap:14px}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
+h1{font-family:var(--f-display);font-size:24px;margin:0}
+h2{font-family:var(--f-display);font-size:18px;margin:0}
+.who{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);flex-wrap:wrap}
+.gate{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.gate input{width:140px}
+nav{display:flex;gap:4px;background:var(--soft);padding:4px;border-radius:10px}
+nav button{flex:1;border:0;background:transparent;color:var(--muted);font:600 15px var(--f-body);padding:9px 10px;border-radius:7px;cursor:pointer}
+nav button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.note{font-size:13px;color:var(--muted);margin:0}
+.banner{border-radius:10px;padding:10px 12px;font-size:14px;background:var(--soft);border-left:4px solid var(--warn)}
+.banner.err{border-left-color:var(--bad)}
+input[type=text],input[type=email],input[type=password],input[type=number],select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
+input:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{font:600 15px var(--f-body);border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:10px 14px;border-radius:9px;cursor:pointer;display:inline-block}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.small{font-size:13px;padding:6px 10px}
+.btn:disabled{opacity:.5;cursor:default}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.row > input{flex:1}
+.viewer{position:relative;background:#000;border-radius:10px;overflow:hidden;aspect-ratio:4/3;max-width:100%;display:grid;place-items:center}
+.viewer video{width:100%;height:100%;object-fit:cover}
+.viewer .frame{position:absolute;inset:18%;border:3px solid rgba(255,255,255,.85);border-radius:12px;pointer-events:none}
+.viewer .idle{color:#cfd6d2;text-align:center;padding:20px;font-size:14px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:var(--soft);border-radius:9px;padding:10px}
+.stat b{display:block;font:700 26px var(--f-display);font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.stat.bad b{color:var(--bad)}
+.log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.log li{display:flex;gap:10px;align-items:baseline;font-size:14px;padding:6px 8px;border-radius:7px;background:var(--soft)}
+.log time{font:500 12px var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.pill{font:700 11px var(--f-body);text-transform:uppercase;letter-spacing:.06em;padding:2px 7px;border-radius:99px;color:#fff;white-space:nowrap}
+.pill.ok{background:var(--ok)} .pill.bad{background:var(--bad)} .pill.warn{background:var(--warn)} .pill.open{background:var(--muted)}
+.tbl-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+td.mono{font-family:var(--f-mono);font-size:13px}
+td.num{font-variant-numeric:tabular-nums}
+.field{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);min-width:0}
+.grid2{display:grid;grid-template-columns:2fr 1fr;gap:10px}
+.login{max-width:380px;margin:8vh auto 0;width:100%}
+@media (max-width:480px){.grid2{grid-template-columns:1fr}.stat b{font-size:22px}}
+progress{width:100%}
+#result{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;color:#fff;
+  padding:max(24px,env(safe-area-inset-top,0px)) max(20px,env(safe-area-inset-right,0px)) max(24px,env(safe-area-inset-bottom,0px)) max(20px,env(safe-area-inset-left,0px));cursor:pointer}
+#result.ok{background:#11823b} #result.bad{background:#b81c1c} #result.warn{background:#a35e00}
+#result .big{font:700 clamp(40px,12vw,84px)/1 var(--f-display);letter-spacing:.02em}
+#result .sub{font-size:clamp(17px,4.5vw,22px);font-weight:600;max-width:30ch}
+#result .det{font:500 14px var(--f-mono);opacity:.9}
+#result .tap{font-size:13px;opacity:.8;margin-top:14px}
+#qrModal{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.6);display:grid;place-items:center;padding:20px}
+#qrModal .box{background:#fff;color:#111;border-radius:12px;padding:18px;display:flex;flex-direction:column;align-items:center;gap:8px;max-width:340px;width:100%}
+#qrModal .box svg{width:100%;height:auto}
+.confirm{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center;background:var(--soft);padding:4px 6px;border-radius:8px;font-size:14px}
+@media (prefers-reduced-motion:no-preference){#result{animation:pop .12s ease-out}@keyframes pop{from{opacity:.4;transform:scale(.98)}to{opacity:1;transform:none}}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Kartenkontrolle</h1>
+    <div class="who" id="whoBox" hidden>
+      <label class="gate" for="gateName">Eingang <input type="text" id="gateName" placeholder="z. B. Eingang Nord" maxlength="30"></label>
+      <span id="whoMail"></span>
+      <button class="btn small" id="logoutBtn">Abmelden</button>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <!-- ANMELDUNG -->
+  <section id="viewLogin" class="panel login" hidden>
+    <h2>Anmelden</h2>
+    <form id="loginForm" style="display:flex;flex-direction:column;gap:10px">
+      <label class="field" for="loginMail">E-Mail <input type="email" id="loginMail" autocomplete="username" required></label>
+      <label class="field" for="loginPw">Passwort <input type="password" id="loginPw" autocomplete="current-password" required></label>
+      <button class="btn primary" type="submit" id="loginBtn">Anmelden</button>
+      <p class="note" id="loginNote">Zugang erhältst du vom Veranstalter.</p>
+    </form>
+  </section>
+
+  <nav role="tablist" id="tabNav" hidden>
+    <button role="tab" id="tabScan" aria-selected="true">Einlass</button>
+    <button role="tab" id="tabCards" aria-selected="false">Karten</button>
+    <button role="tab" id="tabStaff" aria-selected="false">Personal</button>
+  </nav>
+
+  <!-- EINLASS -->
+  <section id="viewScan" class="panel" hidden>
+    <div class="viewer">
+      <video id="video" playsinline muted hidden></video>
+      <div class="frame" id="frame" hidden></div>
+      <div class="idle" id="idle">Kamera ist aus.<br>„Kamera starten" tippen.</div>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="camBtn">Kamera starten</button>
+      <label class="btn" for="photoInput">Foto aufnehmen</label>
+      <input type="file" id="photoInput" accept="image/*" capture="environment" hidden>
+    </div>
+    <p class="note" id="camNote">Die Kamera scannt fortlaufend. Handscanner: ins Eingabefeld unten scannen.</p>
+    <form class="row" id="manualForm" autocomplete="off">
+      <input type="text" id="manualInput" placeholder="Handscanner oder Code eintippen" aria-label="Code manuell eingeben">
+      <button class="btn" type="submit">Prüfen</button>
+    </form>
+    <div class="stats">
+      <div class="stat"><b id="sIn">–</b><span>eingelassen</span></div>
+      <div class="stat"><b id="sTotal">–</b><span>Karten gesamt</span></div>
+      <div class="stat bad"><b id="sCopy">–</b><span>Kopie-Versuche</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <h2>Letzte Scans an diesem Gerät</h2>
+      <ul class="log" id="log"><li><span class="note">Noch keine Scans.</span></li></ul>
+    </div>
+  </section>
+
+  <!-- KARTEN (Admin) -->
+  <section id="viewCards" hidden style="display:flex;flex-direction:column;gap:14px">
+    <div class="panel">
+      <h2>Karten erzeugen</h2>
+      <div class="grid2">
+        <label class="field" for="evName">Veranstaltung <input type="text" id="evName" placeholder="z. B. Sommerfest 2027" maxlength="80"></label>
+        <label class="field" for="evCount">Anzahl <input type="number" id="evCount" min="1" max="5000" value="50"></label>
+      </div>
+      <div class="row"><button class="btn primary" id="genBtn">Karten anlegen</button><span class="note" id="genNote"></span></div>
+      <progress id="genProg" value="0" max="1" hidden></progress>
+      <p class="note">Jede Karte bekommt eine zufällige, nicht erratbare ID (100 Bit). Nur Codes aus dieser Liste gelten.</p>
+    </div>
+    <div class="panel">
+      <h2>Drucken und Export</h2>
+      <div class="row">
+        <button class="btn" id="sheetBtn">Druckbogen öffnen</button>
+        <button class="btn" id="csvBtn">Liste als CSV</button>
+      </div>
+      <p class="note">Der Druckbogen öffnet sich in einem neuen Tab (alle noch nicht eingelassenen Karten, 10 je A4-Seite). Dort mit Strg+P drucken, Skalierung 100 %.</p>
+      <p class="note" id="dlNote"></p>
+    </div>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <h2>Kartenliste</h2>
+        <div class="row"><input type="text" id="search" placeholder="Nr. oder ID suchen" aria-label="Karten suchen" style="max-width:200px"><button class="btn small" id="reloadBtn">Aktualisieren</button></div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Nr.</th><th>Status</th><th>Einlass</th><th>Kopien</th><th>ID</th><th></th></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <p class="note" id="listNote"></p>
+    </div>
+  </section>
+
+  <!-- PERSONAL (Admin) -->
+  <section id="viewStaff" class="panel" hidden>
+    <h2>Personal</h2>
+    <p class="note">Neue Personen zuerst in Supabase anlegen (Authentication → Users → Add user, mit Passwort, „Auto Confirm“ an). Danach hier die Rolle vergeben. Scanner können nur prüfen und sehen keine Karten-IDs.</p>
+    <form class="row" id="staffForm" autocomplete="off">
+      <input type="email" id="staffMail" placeholder="E-Mail" aria-label="E-Mail der Person" required>
+      <select id="staffRole" aria-label="Rolle"><option value="scanner">Scanner</option><option value="admin">Admin</option><option value="">Zugang entziehen</option></select>
+      <button class="btn primary" type="submit">Speichern</button>
+    </form>
+    <p class="note" id="staffNote"></p>
+    <div class="tbl-wrap"><table><thead><tr><th>E-Mail</th><th>Rolle</th></tr></thead><tbody id="staffBody"></tbody></table></div>
+  </section>
+</div>
+
+<div id="result" hidden></div>
+<div id="qrModal" hidden></div>
+<canvas id="cv" hidden></canvas>
+
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const PREFIX="TICKET:", ID_RE=/^[A-Z2-7]{20}$/, B32="ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+let sb=null, role=null, tickets=[], statTimer=null;
+
+/* ---------- Hilfsfunktionen ---------- */
+function newId(){const b=new Uint8Array(13);crypto.getRandomValues(b);let bits=0,val=0,out="";for(const x of b){val=((val<<8)|x)&0xffff;bits+=8;while(bits>=5){out+=B32[(val>>>(bits-5))&31];bits-=5}}return out.slice(0,20)}
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function fmtTime(ts){return ts?new Date(ts).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit",second:"2-digit"}):""}
+function fmtDT(ts){if(!ts)return"";const d=new Date(ts);return d.toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit"})+" "+d.toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"})}
+function gate(){return $("gateName").value.trim()||($("whoMail").textContent||"?")}
+function parseCode(raw){let s=String(raw||"").trim().toUpperCase();if(s.startsWith(PREFIX))s=s.slice(PREFIX.length);s=s.replace(/[\s-]/g,"");return ID_RE.test(s)?s:null}
+function setBanner(t,err){const b=$("banner");b.hidden=!t;b.className="banner"+(err?" err":"");b.textContent=t||""}
+function stamp(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function download(name,data,type){const url=URL.createObjectURL(new Blob([data],{type}));const a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000)}
+try{const g=localStorage.getItem("kk_gate");if(g)$("gateName").value=g}catch(e){}
+$("gateName").addEventListener("change",()=>{try{localStorage.setItem("kk_gate",$("gateName").value.trim())}catch(e){}});
+
+/* ---------- Ansichten ---------- */
+const views={scan:"viewScan",cards:"viewCards",staff:"viewStaff"};
+function showView(v){for(const[k,id]of Object.entries(views))$(id).hidden=k!==v;
+  $("tabScan").setAttribute("aria-selected",v==="scan");$("tabCards").setAttribute("aria-selected",v==="cards");$("tabStaff").setAttribute("aria-selected",v==="staff");
+  if(v!=="scan")stopCamera();if(v==="cards")loadTickets();if(v==="staff")loadStaff()}
+$("tabScan").onclick=()=>showView("scan");$("tabCards").onclick=()=>showView("cards");$("tabStaff").onclick=()=>showView("staff");
+function showLoggedOut(msg){role=null;clearInterval(statTimer);stopCamera();for(const id of Object.values(views))$(id).hidden=true;
+  $("tabNav").hidden=true;$("whoBox").hidden=true;$("viewLogin").hidden=false;if(msg)$("loginNote").textContent=msg}
+
+/* ---------- Start und Anmeldung ---------- */
+if(!window.supabase||SUPABASE_URL.includes("DEIN-PROJEKT")||SUPABASE_KEY.startsWith("DEIN-")){
+  setBanner("Die App ist noch nicht eingerichtet: SUPABASE_URL und SUPABASE_KEY oben in index.html eintragen.",true);
+}else{
+  sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+  sb.auth.onAuthStateChange((ev,session)=>{setTimeout(()=>onSession(session),0)});
+}
+let lastUid=null;
+async function onSession(session){
+  if(!session){lastUid=null;showLoggedOut();return}
+  if(session.user.id===lastUid)return;lastUid=session.user.id;
+  $("whoMail").textContent=session.user.email||"";
+  const {data,error}=await sb.rpc("my_role");
+  if(error){setBanner("Verbindung zur Datenbank fehlgeschlagen: "+error.message,true);return}
+  role=data;
+  if(!role){await sb.auth.signOut();showLoggedOut("Für dieses Konto ist noch kein Zugang freigeschaltet. Bitte beim Veranstalter melden.");return}
+  setBanner(null);$("viewLogin").hidden=true;$("whoBox").hidden=false;$("tabNav").hidden=role!=="admin";
+  showView("scan");refreshStats();clearInterval(statTimer);statTimer=setInterval(refreshStats,15000);
+}
+$("loginForm").onsubmit=async e=>{e.preventDefault();if(!sb)return;$("loginBtn").disabled=true;$("loginNote").textContent="Anmeldung läuft …";
+  const {error}=await sb.auth.signInWithPassword({email:$("loginMail").value.trim(),password:$("loginPw").value});
+  $("loginBtn").disabled=false;$("loginPw").value="";
+  $("loginNote").textContent=error?(error.message.includes("Invalid login")?"E-Mail oder Passwort falsch.":"Anmeldung fehlgeschlagen: "+error.message):""};
+$("logoutBtn").onclick=()=>sb.auth.signOut();
+
+/* ---------- Prüfung ---------- */
+async function refreshStats(){if(!sb||!role)return;const {data,error}=await sb.rpc("get_stats");if(error||!data)return;
+  $("sIn").textContent=data.used;$("sTotal").textContent=data.total;$("sCopy").textContent=data.copies}
+let busy=false,lastCode="",lastCodeAt=0;
+async function handleCode(raw,source){
+  const now=Date.now();if(busy||!role)return;
+  if(source==="cam"&&raw===lastCode&&now-lastCodeAt<4000)return;
+  lastCode=raw;lastCodeAt=now;
+  const id=parseCode(raw);
+  if(!id){showResult("warn","UNGÜLTIG","Kein Code dieser Kartenkontrolle. Fälschung oder fremde Karte.",String(raw).slice(0,40));log("warn","Fremder Code",String(raw).slice(0,24));return}
+  busy=true;
+  try{
+    const {data:r,error}=await sb.rpc("check_in",{p_id:id,p_gate:gate()});
+    if(error)throw error;
+    if(r.state==="ok"){showResult("ok","EINLASS","Karte Nr. "+r.nr+" gültig.",r.event||"");log("ok","Nr. "+r.nr+" eingelassen")}
+    else if(r.state==="copy"){showResult("bad","KOPIE","Karte Nr. "+r.nr+" wurde bereits eingelassen.","um "+fmtTime(r.used_at)+" · "+(r.used_gate||"?"));log("bad","Nr. "+r.nr+" Kopie","erster Einlass "+fmtTime(r.used_at))}
+    else if(r.state==="repeat"){showResult("warn","SCHON DRIN","Karte Nr. "+r.nr+" eben von dir eingelassen.","um "+fmtTime(r.used_at));log("warn","Nr. "+r.nr+" doppelt gescannt")}
+    else{showResult("warn","UNBEKANNT","Code steht nicht in der Kartenliste. Fälschung oder gelöschte Karte.",id);log("warn","Unbekannte ID",id.slice(0,8)+"…")}
+    refreshStats();
+  }catch(e){showResult("warn","KEINE PRÜFUNG","Server nicht erreichbar oder keine Berechtigung. Nicht einlassen, erneut scannen.",String(e?.message||e).slice(0,60))}
+  finally{busy=false}
+}
+
+/* ---------- Ergebnisanzeige ---------- */
+let resTimer=null,audio=null;
+function beep(kind){try{audio=audio||new (window.AudioContext||window.webkitAudioContext)();const seq=kind==="ok"?[[880,.12]]:kind==="bad"?[[220,.18],[0,.06],[220,.18],[0,.06],[220,.3]]:[[440,.15],[0,.05],[440,.15]];let t=audio.currentTime;for(const[f,d]of seq){if(f){const o=audio.createOscillator(),g=audio.createGain();o.type="square";o.frequency.value=f;g.gain.value=.08;o.connect(g).connect(audio.destination);o.start(t);o.stop(t+d)}t+=d}}catch(e){}}
+function showResult(kind,big,sub,det){const el=$("result");el.className=kind;el.hidden=false;
+  el.innerHTML='<div class="big">'+esc(big)+'</div><div class="sub">'+esc(sub)+'</div><div class="det">'+esc(det)+'</div><div class="tap">'+(kind==="ok"?"weiter in 2 s oder tippen":"zum Fortfahren tippen")+'</div>';
+  beep(kind);try{navigator.vibrate&&navigator.vibrate(kind==="ok"?80:[200,80,200,80,300])}catch(e){}
+  clearTimeout(resTimer);if(kind==="ok")resTimer=setTimeout(hideResult,2000)}
+function hideResult(){clearTimeout(resTimer);$("result").hidden=true;lastCodeAt=Date.now();if(!stream&&!$("viewScan").hidden)$("manualInput").focus({preventScroll:true})}
+$("result").onclick=hideResult;
+const logItems=[];
+function log(kind,text,extra){logItems.unshift({kind,text,extra,t:Date.now()});logItems.length=Math.min(logItems.length,20);const lab={ok:"OK",bad:"Kopie",warn:"Prüfen"};
+  $("log").innerHTML=logItems.map(i=>'<li><time>'+fmtTime(i.t)+'</time><span class="pill '+i.kind+'">'+lab[i.kind]+'</span><span>'+esc(i.text)+(i.extra?' <span class="note">· '+esc(i.extra)+'</span>':'')+'</span></li>').join("")}
+
+/* ---------- Kamera ---------- */
+let stream=null,raf=null,detector=null,wake=null;
+if("BarcodeDetector" in window){try{detector=new BarcodeDetector({formats:["qr_code"]})}catch(e){detector=null}}
+async function decodeSource(src,w,h){
+  if(detector){try{const r=await detector.detect(src);if(r.length)return r[0].rawValue}catch(e){}}
+  if(typeof jsQR!=="function")return null;
+  const cv=$("cv"),sc=Math.min(1,960/Math.max(w,h));cv.width=Math.round(w*sc);cv.height=Math.round(h*sc);
+  const ctx=cv.getContext("2d",{willReadFrequently:true});ctx.drawImage(src,0,0,cv.width,cv.height);
+  const img=ctx.getImageData(0,0,cv.width,cv.height);const r=jsQR(img.data,img.width,img.height,{inversionAttempts:"attemptBoth"});return r?r.data:null}
+async function startCamera(){
+  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});
+    const v=$("video");v.srcObject=stream;v.hidden=false;$("frame").hidden=false;$("idle").hidden=true;await v.play();
+    $("camBtn").textContent="Kamera stoppen";try{wake=await navigator.wakeLock?.request("screen")}catch(e){}
+    let lastRun=0;const tick=async t=>{if(!stream)return;if(t-lastRun>180&&!busy&&$("result").hidden&&v.videoWidth){lastRun=t;const code=await decodeSource(v,v.videoWidth,v.videoHeight);if(code)handleCode(code,"cam")}raf=requestAnimationFrame(tick)};
+    raf=requestAnimationFrame(tick);
+  }catch(e){stopCamera();$("camNote").textContent="Kamera nicht verfügbar ("+(e?.name||"Fehler")+"). Kamerazugriff im Browser erlauben oder „Foto aufnehmen“ verwenden."}}
+function stopCamera(){if(raf)cancelAnimationFrame(raf);raf=null;if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
+  $("video").hidden=true;$("frame").hidden=true;$("idle").hidden=false;$("camBtn").textContent="Kamera starten";try{wake&&wake.release();wake=null}catch(e){}}
+$("camBtn").onclick=()=>{try{audio=audio||new (window.AudioContext||window.webkitAudioContext)();audio.resume()}catch(e){};stream?stopCamera():startCamera()};
+$("photoInput").onchange=async e=>{const f=e.target.files[0];e.target.value="";if(!f)return;
+  try{const bmp=await createImageBitmap(f);const code=await decodeSource(bmp,bmp.width,bmp.height);
+    if(code)handleCode(code,"photo");else showResult("warn","KEIN QR-CODE","Auf dem Foto wurde kein QR-Code erkannt. Näher heran und erneut fotografieren.","")}
+  catch(err){showResult("warn","FEHLER","Foto konnte nicht gelesen werden.","")}};
+$("manualForm").onsubmit=e=>{e.preventDefault();const v=$("manualInput").value;$("manualInput").value="";if(v.trim())handleCode(v,"manual")};
+
+/* ---------- Karten (Admin) ---------- */
+async function loadTickets(){
+  if(role!=="admin")return;$("listNote").textContent="Lade …";const all=[];
+  for(let from=0;;from+=1000){const {data,error}=await sb.from("tickets").select("id,nr,event,used_at,used_gate,copy_attempts").order("nr").range(from,from+999);
+    if(error){$("listNote").textContent="Laden fehlgeschlagen: "+error.message;return}all.push(...data);if(data.length<1000)break}
+  tickets=all;renderList();refreshStats()}
+let confirmFor=null;
+function renderList(){
+  const q=$("search").value.trim().toUpperCase();let rows=tickets;if(q)rows=rows.filter(t=>String(t.nr)===q||t.id.includes(q));
+  const shown=rows.slice(0,300);
+  if(!tickets.length){$("tbody").innerHTML='<tr><td colspan="6" class="note">Noch keine Karten. Oben Veranstaltung und Anzahl eingeben und „Karten anlegen" tippen.</td></tr>';$("listNote").textContent="";return}
+  $("tbody").innerHTML=shown.map(t=>{
+    const st=t.used_at?(t.copy_attempts?'<span class="pill bad">Kopie gesehen</span>':'<span class="pill ok">Eingelassen</span>'):'<span class="pill open">Offen</span>';
+    const act=confirmFor===t.id?'<span class="confirm">Löschen?<button class="btn small" data-a="del" data-id="'+t.id+'">Ja</button><button class="btn small" data-a="nodel">Nein</button></span>'
+      :'<button class="btn small" data-a="qr" data-id="'+t.id+'">QR</button> '+(t.used_at?'<button class="btn small" data-a="reset" data-id="'+t.id+'">Zurücksetzen</button> ':'')+'<button class="btn small" data-a="askdel" data-id="'+t.id+'">Löschen</button>';
+    return'<tr><td class="num">'+t.nr+'</td><td>'+st+'</td><td>'+(t.used_at?esc(fmtDT(t.used_at))+' <span class="note">'+esc(t.used_gate||"")+'</span>':'')+'</td><td class="num">'+(t.copy_attempts||"")+'</td><td class="mono">'+t.id.slice(0,8)+'…</td><td>'+act+'</td></tr>'}).join("");
+  $("listNote").textContent=rows.length>shown.length?("Angezeigt: "+shown.length+" von "+rows.length+". Suche verwenden."):""}
+$("search").oninput=renderList;$("reloadBtn").onclick=loadTickets;
+$("tbody").onclick=async e=>{const b=e.target.closest("button");if(!b)return;const id=b.dataset.id,a=b.dataset.a;
+  if(a==="qr")return showQr(id);if(a==="askdel"){confirmFor=id;return renderList()}if(a==="nodel"){confirmFor=null;return renderList()}
+  b.disabled=true;let error=null;
+  if(a==="reset")({error}=await sb.from("tickets").update({used_at:null,used_gate:null,used_by:null}).eq("id",id));
+  if(a==="del"){confirmFor=null;({error}=await sb.from("tickets").delete().eq("id",id))}
+  if(error)$("listNote").textContent="Änderung fehlgeschlagen: "+error.message;await loadTickets()};
+function qrSvg(text){const q=qrcode(0,"M");q.addData(text);q.make();return q.createSvgTag({cellSize:4,margin:2,scalable:true})}
+function showQr(id){const t=tickets.find(x=>x.id===id)||{};const m=$("qrModal");m.hidden=false;
+  m.innerHTML='<div class="box"><strong>'+esc(t.event)+'</strong><div>Karte Nr. '+esc(t.nr)+'</div>'+qrSvg(PREFIX+id)+'<code style="font-family:var(--f-mono);font-size:12px">'+id+'</code><button class="btn" id="qrClose">Schließen</button></div>';
+  $("qrClose").onclick=()=>{m.hidden=true}}
+$("qrModal").onclick=e=>{if(e.target.id==="qrModal")$("qrModal").hidden=true};
+try{const ev=localStorage.getItem("kk_event");if(ev)$("evName").value=ev}catch(e){}
+$("genBtn").onclick=async()=>{
+  const ev=$("evName").value.trim(),n=Math.floor(+$("evCount").value);
+  if(!ev){$("genNote").textContent="Bitte Veranstaltung eintragen.";$("evName").focus();return}
+  if(!(n>=1&&n<=5000)){$("genNote").textContent="Anzahl 1 bis 5000.";return}
+  try{localStorage.setItem("kk_event",ev)}catch(e){}
+  await loadTickets();let nr=tickets.reduce((m,t)=>Math.max(m,t.nr),0);const first=nr+1;
+  const rows=[];for(let i=0;i<n;i++)rows.push({id:newId(),nr:++nr,event:ev});
+  $("genBtn").disabled=true;const p=$("genProg");p.hidden=false;p.max=n;p.value=0;let done=0,err=null;
+  for(let i=0;i<rows.length&&!err;i+=500){const chunk=rows.slice(i,i+500);const {error}=await sb.from("tickets").insert(chunk);if(error)err=error;else{done+=chunk.length;p.value=done}}
+  $("genBtn").disabled=false;p.hidden=true;
+  $("genNote").textContent=err?("Abbruch nach "+done+" Karten: "+err.message):(n+" Karten angelegt (Nr. "+first+" bis "+nr+"). Jetzt Druckbogen öffnen.");
+  loadTickets()};
+$("sheetBtn").onclick=async()=>{
+  await loadTickets();const rows=tickets.filter(t=>!t.used_at);
+  if(!rows.length){$("dlNote").textContent="Keine offenen Karten zum Drucken.";return}
+  const cards=rows.map(t=>'<div class="card"><div class="t"><div class="ev">'+esc(t.event)+'</div><div class="nr">Nr. '+t.nr+'</div><div class="hint">Eintrittskarte · nur einmal gültig</div><div class="id">'+t.id+'</div></div><div class="q">'+qrSvg(PREFIX+t.id)+'</div></div>').join("");
+  const html='<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Druckbogen Eintrittskarten</title><style>@page{size:A4;margin:10mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff}.grid{display:grid;grid-template-columns:95mm 95mm;grid-auto-rows:55mm;justify-content:center}.card{border:.3mm dashed #999;display:flex;align-items:center;gap:4mm;padding:4mm;break-inside:avoid}.t{flex:1;min-width:0;display:flex;flex-direction:column;gap:1.5mm}.ev{font-weight:700;font-size:13pt;line-height:1.15}.nr{font-size:20pt;font-weight:700}.hint{font-size:8pt;color:#555}.id{font-family:Consolas,monospace;font-size:7pt;color:#555;word-break:break-all}.q{width:40mm;height:40mm;flex:none}.q svg{width:100%;height:100%}.info{font-size:10pt;margin:4mm}@media print{.info{display:none}}</style></head><body><p class="info">Mit Strg+P drucken (A4, Skalierung 100 %). Entlang der gestrichelten Linien schneiden.</p><div class="grid">'+cards+'</div></body></html>';
+  const w=window.open(URL.createObjectURL(new Blob([html],{type:"text/html"})),"_blank");
+  if(!w){download("Eintrittskarten_Druckbogen_"+stamp()+".html",html,"text/html");$("dlNote").textContent="Pop-up blockiert, Druckbogen wurde stattdessen heruntergeladen."}else $("dlNote").textContent=""};
+$("csvBtn").onclick=async()=>{
+  await loadTickets();if(!tickets.length){$("dlNote").textContent="Keine Karten vorhanden.";return}
+  const q=s=>'"'+String(s??"").replace(/"/g,'""')+'"';
+  const lines=["Nr;Veranstaltung;ID;QR-Inhalt;Status;Einlass;Eingang;Kopie-Versuche"];
+  for(const t of tickets)lines.push([t.nr,q(t.event),t.id,PREFIX+t.id,t.used_at?"eingelassen":"offen",t.used_at?fmtDT(t.used_at):"",q(t.used_gate),t.copy_attempts||0].join(";"));
+  download("Eintrittskarten_"+stamp()+".csv","﻿"+lines.join("\r\n"),"text/csv;charset=utf-8")};
+
+/* ---------- Personal (Admin) ---------- */
+async function loadStaff(){const {data,error}=await sb.rpc("list_staff");
+  if(error){$("staffNote").textContent="Laden fehlgeschlagen: "+error.message;return}
+  $("staffBody").innerHTML=data.map(s=>'<tr><td>'+esc(s.email)+'</td><td>'+(s.role==="admin"?"Admin":"Scanner")+'</td></tr>').join("")||'<tr><td colspan="2" class="note">Noch niemand eingetragen.</td></tr>'}
+$("staffForm").onsubmit=async e=>{e.preventDefault();
+  const {data,error}=await sb.rpc("set_role",{p_email:$("staffMail").value,p_role:$("staffRole").value||null});
+  const msg={ok:"Gespeichert.",entfernt:"Zugang entzogen.",nicht_gefunden:"Kein Konto mit dieser E-Mail. Zuerst in Supabase unter Authentication → Users anlegen.",eigene_rolle:"Die eigene Rolle kann hier nicht geändert werden."};
+  $("staffNote").textContent=error?("Fehler: "+error.message):(msg[data]||data);if(!error&&(data==="ok"||data==="entfernt"))$("staffMail").value="";loadStaff()};
+})();
+</script>
+</body>
+</html>
